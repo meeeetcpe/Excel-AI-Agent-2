@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { Button, Spinner, Label, makeStyles, shorthands, tokens } from "@fluentui/react-components";
-import { ResearchComponent } from './ResearchComponent';
+//import { ResearchComponent } from './ResearchComponent';
 
 const useStyles = makeStyles({
   root: {
