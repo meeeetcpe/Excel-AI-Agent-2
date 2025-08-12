@@ -15,7 +15,6 @@ If the user asks a question that cannot be answered by analyzing data (like a ge
 - Your Response: {"tool": "none", "result": {"summary": "I am an Excel data agent and cannot search the internet for that information."}}
 `;
 
-// THIS HELPER FUNCTION NOW HAS ITS OWN SAFETY CHECK
 async function runDataAnalyzer(data, prompt) {
   const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
   const DATA_ANALYZER_PROMPT = `You are an expert Excel data analyst. Your task is to analyze a given JSON dataset based on a user's plain-English request. You must return your response as a single, valid JSON object with two properties:
@@ -27,17 +26,14 @@ async function runDataAnalyzer(data, prompt) {
   const response = await result.response;
   const responseText = response.text();
 
-  // THE FIX IS HERE: Add a try/catch block inside the data analyzer as well.
   try {
     return JSON.parse(responseText);
   } catch (e) {
-    // If the data analysis result isn't valid JSON, return it as a plain text summary.
     console.error("Data analyzer failed to return valid JSON. Returning plain text.");
     return { summary: responseText, result: "" };
   }
 }
 
-// --- Main Handler ---
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -61,17 +57,27 @@ module.exports = async (req, res) => {
     }
 
     let finalResult;
+    // THIS IS THE CORRECTED LOGIC BLOCK
     if (toolChoice.tool === 'data_analyzer') {
       if (!data) throw new Error("Data analysis requires a selected data range in Excel.");
+      // We now call the 'runDataAnalyzer' function and wait for its result.
       finalResult = await runDataAnalyzer(data, toolChoice.parameters.prompt);
+      // We add the tool name to the result for display purposes.
+      finalResult.toolUsed = 'data_analyzer';
     } else {
+      // If no tool was chosen, the result is the summary from the AI's first response.
       finalResult = toolChoice.result;
+      finalResult.toolUsed = 'none';
     }
     
     res.status(200).json(finalResult);
 
   } catch (error) {
     console.error('Error in agent handler:', error);
+    // Check for the specific "overloaded" error from the API
+    if (error.message && error.message.includes('overloaded')) {
+      return res.status(503).json({ error: "The AI model is currently overloaded. Please try again in a moment." });
+    }
     res.status(500).json({ error: error.message });
   }
 };
