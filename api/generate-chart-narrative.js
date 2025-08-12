@@ -1,7 +1,7 @@
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 // 1. Initialize the Gemini Client
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_APIS_KEY);
 
 // 2. Define the Instructions for the AI
 const CHART_NARRATIVE_PROMPT = `You are a crisp analytical chart caption writer. Given the data series and categories, write 3-5 bullet points highlighting: the key trend, any anomalies or outliers, a significant comparison, and a practical takeaway. Return only the bullet points as a single block of text.`;
