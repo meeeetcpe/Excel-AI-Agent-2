@@ -48,7 +48,7 @@ const useStyles = makeStyles({
 
 interface Message {
   sender: 'user' | 'agent';
-  content: string | React.ReactNode;
+  content: string;
 }
 
 const App = () => {
@@ -56,7 +56,7 @@ const App = () => {
   const [isLoading, setIsLoading] = React.useState(false);
   const [prompt, setPrompt] = React.useState("");
   const [history, setHistory] = React.useState<Message[]>([
-    { sender: 'agent', content: "Hello! Select some data or ask me a question." }
+    { sender: 'agent', content: "Hello! Please select your data and tell me what you'd like to do." }
   ]);
   const chatEndRef = React.useRef<HTMLDivElement>(null);
 
@@ -82,41 +82,31 @@ const App = () => {
             await context.sync();
             selectedData = selectedRange.values;
         } catch (error) {
-            console.log("No range selected or readable, proceeding without data.");
+            throw new Error("You must select a range of data to analyze.");
         }
         
-        const response = await fetch("/api/agent-handler", {
+        const response = await fetch("/api/analyze-data", {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ data: selectedData, prompt: prompt })
         });
 
-        if (!response.ok) {
-          const err = await response.json();
-          throw new Error(err.error || "Server error");
-        }
         const result = await response.json();
 
-        // THIS IS THE CORRECTED DISPLAY LOGIC
-        const agentThought: Message = { sender: 'agent', content: <em>Thinking... Used tool: {result.toolUsed || 'none'}</em> };
+        if (!response.ok) {
+          throw new Error(result.error || result.summary || "An unknown error occurred.");
+        }
+
+        const agentResponse: Message = { sender: 'agent', content: result.summary };
+        setHistory(prev => [...prev, agentResponse]);
         
-        const agentResponse: Message = { sender: 'agent', content: result.summary || "I have completed the task." };
-        
-        // Add the thought and the final response to the chat history
-        setHistory(prev => [...prev, agentThought, agentResponse]);
-        
-        // If there's a result to place in the sheet, do it now
         if (result.result && selectedRange) {
             const sheet = context.workbook.worksheets.getActiveWorksheet();
-            // Place the result in the cell directly below the selection
-            const resultRange = selectedRange.getOffsetRange(selectedRange.rowCount, 0);
+            const resultRange = selectedRange.getOffsetRange(selectedRange.rowCount + 1, 0);
             
-            // Check if the result is a table (array of arrays) or a single value
             if (Array.isArray(result.result) && Array.isArray(result.result[0])) {
-              // It's a table, so resize the range to fit
               resultRange.getResizedRange(result.result.length - 1, result.result[0].length - 1).values = result.result;
             } else {
-              // It's a single value
               resultRange.getCell(0, 0).values = [[result.result]];
             }
             await context.sync();
@@ -140,7 +130,7 @@ const App = () => {
         ))}
         {isLoading && (
           <div className={styles.thinking}>
-            <Spinner size="tiny"/> Thinking...
+            <Spinner size="tiny"/> Analyzing...
           </div>
         )}
         <div ref={chatEndRef} />
@@ -149,7 +139,7 @@ const App = () => {
         <Textarea 
           value={prompt}
           onChange={(_, data) => setPrompt(data.value)}
-          placeholder="Type your request here..."
+          placeholder="e.g., Sum of column A"
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmit(); } }}
           style={{resize: "none"}}
         />
