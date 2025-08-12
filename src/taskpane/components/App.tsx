@@ -1,6 +1,5 @@
 import * as React from 'react';
 import { Button, Spinner, Label, makeStyles, shorthands, tokens } from "@fluentui/react-components";
-//import { ResearchComponent } from './ResearchComponent';
 
 const useStyles = makeStyles({
   root: {
@@ -17,13 +16,6 @@ const useStyles = makeStyles({
   centered: {
     alignSelf: "center",
     textAlign: "center"
-  },
-  hr: {
-    width: "100%",
-    border: "none",
-    borderTop: `1px solid ${tokens.colorNeutralStroke2}`,
-    marginTop: "10px",
-    marginBottom: "10px",
   }
 });
 
@@ -33,7 +25,6 @@ const App = () => {
   const [status, setStatus] = React.useState("Ready.");
 
   const handleGenerateChart = async () => {
-    // ... (This function's code does not need to change)
     setIsLoading(true);
     setStatus("1/3: Reading selected data...");
     try {
@@ -86,13 +77,6 @@ const App = () => {
         <Button appearance="primary" disabled={isLoading} onClick={handleGenerateChart}>
           Generate Chart from Selection
         </Button>
-      </div>
-
-      <hr className={styles.hr}/>
-
-      <div className={styles.section}>
-         {/* THE FIX IS ON THE LINE BELOW: pass 'isLoading' as a prop */}
-         <ResearchComponent isLoading={isLoading} setIsLoading={setIsLoading} setStatus={setStatus} />
       </div>
 
       {isLoading && (
