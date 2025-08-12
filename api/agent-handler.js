@@ -2,7 +2,6 @@ const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-// The agent prompt now only has one tool
 const AGENT_PROMPT = `You are an AI agent inside Microsoft Excel. Your goal is to help the user with their request. The only tool you have is a "data_analyzer".
 
 If the user's request involves manipulating, calculating, filtering, or analyzing a selected range of data, use the "data_analyzer" tool.
@@ -37,4 +36,38 @@ module.exports = async (req, res) => {
   const { data, prompt } = req.body;
 
   try {
-    const agentModel = genAI.
+    const agentModel = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const decisionPrompt = `${AGENT_PROMPT}\n\nUser Prompt: "${prompt}"\nSelected Data Snippet: ${data ? JSON.stringify(data.slice(0, 3)) : "None"}`;
+    const decisionResult = await agentModel.generateContent(decisionPrompt);
+    const decisionResponse = await decisionResult.response;
+    const responseText = decisionResponse.text();
+
+    let toolChoice;
+    // THIS 'try/catch' BLOCK IS THE FIX.
+    // It makes our code robust against bad AI responses.
+    try {
+      // First, try to parse the response as JSON.
+      toolChoice = JSON.parse(responseText);
+    } catch (e) {
+      // If parsing fails, it means the AI sent plain text.
+      // We'll treat that plain text as the final answer.
+      toolChoice = { tool: 'none', result: { summary: responseText } };
+    }
+
+
+    let finalResult;
+    if (toolChoice.tool === 'data_analyzer') {
+      if (!data) throw new Error("Data analysis requires a selected data range in Excel.");
+      finalResult = await runDataAnalyzer(data, toolChoice.parameters.prompt);
+    } else {
+      // If the AI chooses no tool, we use the summary it generated.
+      finalResult = toolChoice.result;
+    }
+    
+    res.status(200).json(finalResult);
+
+  } catch (error) {
+    console.error('Error in agent handler:', error);
+    res.status(500).json({ error: error.message });
+  }
+};
