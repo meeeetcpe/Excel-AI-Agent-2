@@ -1,27 +1,30 @@
-import * as React from "react";
-import { createRoot } from "react-dom/client";
 import App from "./components/App";
 import { FluentProvider, webLightTheme } from "@fluentui/react-components";
+import * as React from "react";
+import * as ReactDOM from "react-dom";
 
-/* global document, Office, module, require, HTMLElement */
+/* global document, Office, module, require */
 
-const title = "Contoso Task Pane Add-in";
+const title = "Excel AI Agent";
 
-const rootElement: HTMLElement | null = document.getElementById("container");
-const root = rootElement ? createRoot(rootElement) : undefined;
+const render = (Component) => {
+  ReactDOM.render(
+    <FluentProvider theme={webLightTheme}>
+      {/* THE FIX IS ON THE LINE BELOW: Remove the 'title' property */}
+      <Component />
+    </FluentProvider>,
+    document.getElementById("container")
+  );
+};
 
 /* Render application after Office initializes */
 Office.onReady(() => {
-  root?.render(
-    <FluentProvider theme={webLightTheme}>
-      <App title={title} />
-    </FluentProvider>
-  );
+  render(App);
 });
 
 if ((module as any).hot) {
   (module as any).hot.accept("./components/App", () => {
     const NextApp = require("./components/App").default;
-    root?.render(NextApp);
+    render(NextApp);
   });
 }
