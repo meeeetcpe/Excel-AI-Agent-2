@@ -9,7 +9,7 @@ If the user's request involves manipulating, calculating, filtering, or analyzin
 If the user asks a question that cannot be answered by analyzing data (like a general knowledge question), you must respond with a JSON object where the "summary" explains that you cannot search the internet.
 
 - User Request: "find the total of the 'Sales' column"
-- Your Response: {"tool": "data_analyzer", "parameters": {"prompt": "find the total of the sales column"}}
+- Your Response: {"tool": "data_analyzer", "parameters": {"prompt": "find the total of the 'Sales' column"}}
 
 - User Request: "what is the capital of France?"
 - Your Response: {"tool": "none", "result": {"summary": "I am an Excel data agent and cannot search the internet for that information."}}
@@ -29,7 +29,6 @@ async function runDataAnalyzer(data, prompt) {
   try {
     return JSON.parse(responseText);
   } catch (e) {
-    console.error("Data analyzer failed to return valid JSON. Returning plain text.");
     return { summary: responseText, result: "" };
   }
 }
@@ -60,24 +59,29 @@ module.exports = async (req, res) => {
     // THIS IS THE CORRECTED LOGIC BLOCK
     if (toolChoice.tool === 'data_analyzer') {
       if (!data) throw new Error("Data analysis requires a selected data range in Excel.");
-      // We now call the 'runDataAnalyzer' function and wait for its result.
-      finalResult = await runDataAnalyzer(data, toolChoice.parameters.prompt);
-      // We add the tool name to the result for display purposes.
-      finalResult.toolUsed = 'data_analyzer';
+      // We now call the 'runDataAnalyzer' function AND 'await' its result.
+      const analysisResult = await runDataAnalyzer(data, toolChoice.parameters.prompt);
+      // We construct the final result from the *output* of the analyzer.
+      finalResult = {
+        toolUsed: 'data_analyzer',
+        summary: analysisResult.summary,
+        result: analysisResult.result
+      };
     } else {
       // If no tool was chosen, the result is the summary from the AI's first response.
-      finalResult = toolChoice.result;
-      finalResult.toolUsed = 'none';
+      finalResult = {
+        toolUsed: 'none',
+        summary: toolChoice.result.summary
+      };
     }
     
     res.status(200).json(finalResult);
 
   } catch (error) {
     console.error('Error in agent handler:', error);
-    // Check for the specific "overloaded" error from the API
     if (error.message && error.message.includes('overloaded')) {
-      return res.status(503).json({ error: "The AI model is currently overloaded. Please try again in a moment." });
+      return res.status(503).json({ summary: "The AI model is currently overloaded. Please try again in a moment." });
     }
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ summary: error.message });
   }
 };
