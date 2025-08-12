@@ -2,36 +2,20 @@ const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-const AGENT_PROMPT = `You are an AI agent inside Microsoft Excel. Your goal is to help the user with their request. The only tool you have is a "data_analyzer".
+const DATA_ANALYZER_PROMPT = `You are an expert Excel data analyst. Your task is to analyze a given JSON dataset based on a user's plain-English request and provide a direct result.
 
-If the user's request involves manipulating, calculating, filtering, or analyzing a selected range of data, use the "data_analyzer" tool.
+You MUST return your response as a single, valid JSON object with two properties:
+1. "summary": A one-sentence summary of the action you took (e.g., "I have calculated the sum of the Sales column.").
+2. "result": The result of the analysis. This can be a single value (like a number), or an array of arrays if you are returning a new table of data.
 
-If the user asks a question that cannot be answered by analyzing data (like a general knowledge question), you must respond with a JSON object where the "summary" explains that you cannot search the internet.
+If you cannot fulfill the request, the "summary" should explain why, and the "result" should be null.
 
-- User Request: "find the total of the 'Sales' column"
-- Your Response: {"tool": "data_analyzer", "parameters": {"prompt": "find the total of the 'Sales' column"}}
+DATASET:
+{{DATA}}
 
-- User Request: "what is the capital of France?"
-- Your Response: {"tool": "none", "result": {"summary": "I am an Excel data agent and cannot search the internet for that information."}}
+USER REQUEST:
+"{{PROMPT}}"
 `;
-
-async function runDataAnalyzer(data, prompt) {
-  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-  const DATA_ANALYZER_PROMPT = `You are an expert Excel data analyst. Your task is to analyze a given JSON dataset based on a user's plain-English request. You must return your response as a single, valid JSON object with two properties:
-1. "summary": A one-sentence summary of the action you took.
-2. "result": The result of the analysis. This can be a single value, an array, or an array of arrays.`;
-  const fullPrompt = `${DATA_ANALYZER_PROMPT}\n\nDATASET:\n${JSON.stringify(data)}\n\nUSER REQUEST:\n"${prompt}"`;
-  
-  const result = await model.generateContent(fullPrompt);
-  const response = await result.response;
-  const responseText = response.text();
-
-  try {
-    return JSON.parse(responseText);
-  } catch (e) {
-    return { summary: responseText, result: "" };
-  }
-}
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -41,47 +25,36 @@ module.exports = async (req, res) => {
 
   const { data, prompt } = req.body;
 
+  if (!prompt) {
+    return res.status(400).json({ error: "A prompt is required." });
+  }
+  if (!data) {
+    return res.status(400).json({ error: "A data selection is required for analysis." });
+  }
+
   try {
-    const agentModel = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-    const decisionPrompt = `${AGENT_PROMPT}\n\nUser Prompt: "${prompt}"\nSelected Data Snippet: ${data ? JSON.stringify(data.slice(0, 3)) : "None"}`;
-    const decisionResult = await agentModel.generateContent(decisionPrompt);
-    const decisionResponse = await decisionResult.response;
-    const responseText = decisionResponse.text();
-
-    let toolChoice;
-    try {
-      toolChoice = JSON.parse(responseText);
-    } catch (e) {
-      toolChoice = { tool: 'none', result: { summary: responseText } };
-    }
-
-    let finalResult;
-    // THIS IS THE CORRECTED LOGIC BLOCK
-    if (toolChoice.tool === 'data_analyzer') {
-      if (!data) throw new Error("Data analysis requires a selected data range in Excel.");
-      // We now call the 'runDataAnalyzer' function AND 'await' its result.
-      const analysisResult = await runDataAnalyzer(data, toolChoice.parameters.prompt);
-      // We construct the final result from the *output* of the analyzer.
-      finalResult = {
-        toolUsed: 'data_analyzer',
-        summary: analysisResult.summary,
-        result: analysisResult.result
-      };
-    } else {
-      // If no tool was chosen, the result is the summary from the AI's first response.
-      finalResult = {
-        toolUsed: 'none',
-        summary: toolChoice.result.summary
-      };
-    }
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
     
-    res.status(200).json(finalResult);
+    let finalPrompt = DATA_ANALYZER_PROMPT.replace('{{DATA}}', JSON.stringify(data));
+    finalPrompt = finalPrompt.replace('{{PROMPT}}', prompt);
+
+    const result = await model.generateContent(finalPrompt);
+    const response = await result.response;
+    const responseText = response.text();
+    
+    let jsonResponse;
+    try {
+      jsonResponse = JSON.parse(responseText);
+    } catch(e) {
+      // If the AI fails to return JSON, wrap its text in a summary.
+      console.error("AI did not return valid JSON. Returning raw text.");
+      jsonResponse = { summary: responseText, result: null };
+    }
+
+    res.status(200).json(jsonResponse);
 
   } catch (error) {
-    console.error('Error in agent handler:', error);
-    if (error.message && error.message.includes('overloaded')) {
-      return res.status(503).json({ summary: "The AI model is currently overloaded. Please try again in a moment." });
-    }
-    res.status(500).json({ summary: error.message });
+    console.error('Error in data analyzer handler:', error);
+    res.status(500).json({ summary: "An unexpected error occurred with the AI.", result: null });
   }
 };
